@@ -1,0 +1,17 @@
+<ItemPools>
+    <Pool Name="angel">
+        <Item Name="Book of Illusions" Weight="1" DecreaseBy="1" RemoveOn="0.1"/>
+    </Pool>
+    <Pool Name="devil">
+        <Item Name="Book of Illusions" Weight="1" DecreaseBy="1" RemoveOn="0.1"/>
+    </Pool>
+    <Pool Name="library">
+        <Item Name="Book of Illusions" Weight="1" DecreaseBy="0.1" RemoveOn="0.1"/>
+    </Pool>
+    <Pool Name="greedAngel">
+        <Item Name="Book of Illusions" Weight="1" DecreaseBy="1" RemoveOn="0.1"/>
+    </Pool>
+    <Pool Name="greedDevil">
+        <Item Name="Book of Illusions" Weight="1" DecreaseBy="1" RemoveOn="0.1"/>
+    </Pool>
+</ItemPools>
