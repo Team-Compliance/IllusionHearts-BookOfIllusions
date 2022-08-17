@@ -1,5 +1,6 @@
 IllusionMod = RegisterMod("Illusion Hearts + Book of Illusions", 1)
 local mod = IllusionMod
+local json = require("json")
 
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
@@ -9,6 +10,29 @@ local BOIDescSpa = "Genera un clon de ilusión tras usarlo#El clon es el mismo p
 local BOIDescRu = "При использовании создаёт иллюзию# Иллюзия - это тот же персонаж, что и ваш, которые умирают от одного удара"
 local BOIDescPt_Br = "Gera um clone de ilusão quando usado#Clones de ilusão são o mesmo personagem como você e morrem em um golpe"
 
+local ForbiddenItems = {
+	CollectibleType.COLLECTIBLE_1UP,
+	CollectibleType.COLLECTIBLE_DEAD_CAT,
+	CollectibleType.COLLECTIBLE_INNER_CHILD,
+	CollectibleType.COLLECTIBLE_GUPPYS_COLLAR,
+	CollectibleType.COLLECTIBLE_LAZARUS_RAGS,
+	CollectibleType.COLLECTIBLE_ANKH,
+	CollectibleType.COLLECTIBLE_JUDAS_SHADOW,
+}
+
+local ForbiddenPCombos = {
+	{PlayerType = PlayerType.PLAYER_THELOST_B, Item = CollectibleType.COLLECTIBLE_BIRTHRIGHT},
+}
+
+function mod.AddForbiddenItem(i)
+	table.insert(ForbiddenItems,i)
+end
+
+function mod.AddForbiddenCharItem(type,i)
+	table.insert(ForbiddenPCombos,{PlayerType = type, Item = i})
+end
+
+local pDataTable = {}
 
 local Wiki = {
   BookOfIllusions = {
@@ -34,7 +58,7 @@ if EID then
 	EID:assignTransformation("collectible", CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS, "12", "spa") 
 	EID:addCollectible(CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS, BOIDescRu , "Книга иллюзий", "ru") 
 	EID:assignTransformation("collectible", CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS, "12", "ru") 
-	EID:addCollectible(CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS, BOIDesc, "Livro de Ilusões", "pt_br")
+	EID:addCollectible(CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS, BOIDescPt_Br, "Livro de Ilusões", "pt_br")
 	EID:assignTransformation("collectible", CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS, "12", "pt_br") 
 end
 
@@ -56,7 +80,86 @@ if ExtraBirthright then
     ExtraBirthright.AddBookToBirthrightEffect(CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS)
 end
 
-function IllusionMod:addIllusion(player, isIllusion)
+local function BlackList(collectible)
+	for _,i in ipairs(ForbiddenItems) do
+		if i == collectible then
+			return true
+		end
+	end
+	return false
+end
+
+local function CanBeRevived(pType,withItem)
+	for _,v in ipairs(ForbiddenPCombos) do
+		if v.PlayerType == pType and v.Item == withItem then
+			return true
+		end
+	end
+	return false
+end
+
+function mod:Save(isSaving)
+	if isSaving then
+		local playersSave = { }
+		for key,value in pairs(pDataTable) do
+			if value ~= nil and key ~= nil then
+				playersSave[tostring(key)] = value
+			end
+		end
+		mod:SaveData(json.encode(playersSave))
+	end
+end
+mod:AddCallback(ModCallbacks.MC_PRE_GAME_EXIT, mod.Save)
+
+function mod:Load(isLoading)
+	pDataTable = {}
+	if isLoading and mod:HasData() then
+		local playersLoad = json.decode(mod:LoadData())
+		for key,value in pairs(playersLoad) do
+			if value ~= nil and key ~= nil then
+				pDataTable[tonumber(key)] = value
+			end
+		end
+		for i = 0, Game():GetNumPlayers()-1 do
+			local p = Isaac.GetPlayer(i)
+			local index = mod:GetEntityIndex(p)
+			if pDataTable[index].IsIllusion then
+				p:AddCacheFlags(CacheFlag.CACHE_ALL)
+				p:EvaluateItems()
+			else
+				mod:RemoveEntityIndex(p)
+			end
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, mod.Load)
+
+function mod:End(GameOver)
+	if GameOver then
+		pDataTable = {}
+		mod:RemoveData()
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_GAME_END, mod.End)
+
+function mod:UpdateClones(p)
+	local index = mod:GetEntityIndex(p)
+	if pDataTable[index].IsIllusion then
+		if p:IsDead() then
+			p:ChangePlayerType(PlayerType.PLAYER_THELOST)
+			p.Visible = false
+			p:GetSprite():SetLastFrame()
+			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position, Vector.Zero, nil)
+		end
+		if p.Parent and not p.Parent:Exists() then
+			p:Die()
+		end
+		p:GetEffects():RemoveCollectibleEffect(CollectibleType.COLLECTIBLE_HOLY_MANTLE)
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_PLAYER_UPDATE, mod.UpdateClones)
+
+function mod:addIllusion(player, isIllusion)
 	local id = Game():GetNumPlayers() - 1
 	local playerType = player:GetPlayerType()
 	if playerType == PlayerType.PLAYER_JACOB then 
@@ -66,16 +169,30 @@ function IllusionMod:addIllusion(player, isIllusion)
 	
 	Isaac.ExecuteCommand('addplayer '..playerType..' '..player.ControllerIndex)
 	local _p = Isaac.GetPlayer(id + 1)
-	local d = mod:GetData(_p)
+	local d = mod:GetEntityIndex(_p)
 	if isIllusion then
 		_p.Parent = player
 		Game():GetHUD():AssignPlayerHUDs()
 		
 		for i=1, mod:GetMaxCollectibleID() do
-			if not _p:HasCollectible(i) then
-				for j=1, player:GetCollectibleNum(i) do
-					_p:AddCollectible(i,0,false)
+			if not BlackList(i) and not CanBeRevived(playerType,i) then
+				local itemConfig = Isaac.GetItemConfig()
+				local itemCollectible = itemConfig:GetCollectible(i)
+				if itemCollectible then
+					if not _p:HasCollectible(i) and player:HasCollectible(i) and itemCollectible.Tags & ItemConfig.TAG_QUEST ~= ItemConfig.TAG_QUEST then
+						if itemCollectible.Type ~= ItemType.ITEM_ACTIVE then
+							for j=1, player:GetCollectibleNum(i) do
+								_p:AddCollectible(i,0,false)
+							end
+						end
+					end
 				end
+			end
+		end
+		for i = 2, 0, -1 do
+			local c = _p:GetActiveItem(i)
+			if c > 0 then
+				_p:RemoveCollectible(c)
 			end
 		end
 		
@@ -89,44 +206,52 @@ function IllusionMod:addIllusion(player, isIllusion)
 		_p:AddMaxHearts(2)
 		_p:AddHearts(2)
 		_p.EntityCollisionClass = EntityCollisionClass.ENTCOLL_ENEMIES | EntityCollisionClass.ENTCOLL_PLAYERONLY
-		d.IsIllusion = true
-
+		
+		pDataTable[d].IsIllusion = true
 		Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, _p.Position, _p.Velocity, _p)
 	end
+	_p:AddCacheFlags(CacheFlag.CACHE_ALL)
+	_p:EvaluateItems()
 	return _p
 end
 
+function mod:CloneCache(p,cache)
+	local d = mod:GetEntityIndex(p)
+	if pDataTable[d].IsIllusion then
+		local color = Color(0.518, 0.22, 1, 0.45)
+		local s = p:GetSprite()
+		s.Color = color
+	else
+		mod:RemoveEntityIndex(p)
+	end
+end
+mod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, mod.CloneCache)
+
 function mod:preIllusionHeartPickup(pickup, collider, low)
 	local player = collider:ToPlayer()
-	local pickupData = mod:GetData(pickup)
-
 	if player then
+		local i = mod:GetEntityIndex(player)
+		if pDataTable[i].IsIllusion then
+			return false
+		else
+			mod:RemoveEntityIndex(player)
+		end
 		if pickup.SubType == HeartSubType.HEART_ILLUSION then
-			pickupData.Picked = true
+			pickup.Velocity = Vector.Zero
 			pickup.EntityCollisionClass = EntityCollisionClass.ENTCOLL_NONE
 			pickup:GetSprite():Play("Collect", true)
-			
-			IllusionMod:addIllusion(player, true)
+			pickup:Die()
+			mod:addIllusion(player, true)
+			return true		
 		end
 	end
 end
 mod:AddCallback(ModCallbacks.MC_PRE_PICKUP_COLLISION, mod.preIllusionHeartPickup, PickupVariant.PICKUP_HEART)
 
-function mod:postIllusionHeartUpdate(pickup)
-	local pickupData = mod:GetData(pickup)
-	
-	if pickupData.Picked then
-		if pickup:GetSprite():GetFrame() == 6 then
-			pickup:Remove()
-		end
-	end
-end
-mod:AddCallback(ModCallbacks.MC_POST_PICKUP_UPDATE, mod.postIllusionHeartUpdate, PickupVariant.PICKUP_HEART)
-
 function mod:postPickupInit(pickup)
 	local rng = pickup:GetDropRNG()
 	
-	if pickup.SubType == HeartSubType.HEART_GOLDEN then
+	if pickup.SubType == HeartSubType.HEART_GOLDEN and player:GetSprite():GetAnimation() == "Appear" then
 		if rng:RandomFloat() >= 0.5 then
 			pickup:Morph(pickup.Type, pickup.Variant, HeartSubType.HEART_ILLUSION)
 		end
@@ -135,317 +260,97 @@ end
 mod:AddCallback(ModCallbacks.MC_POST_PICKUP_INIT, mod.postPickupInit, PickupVariant.PICKUP_HEART)
 
 function mod:onUseBookOfIllusions(boi, rng, player, flags, slot, data)
-	DoBigbook("gfx/ui/giantbook/Illusions.png", SoundEffect.SOUND_BOOK_PAGE_TURN_12, nil, nil, true)
-	
-	IllusionMod:addIllusion(player, true)
+	if GiantBookAPI then
+		GiantBookAPI.playGiantBook("Appear", "Illusions.png", Color(0.2, 0.1, 0.3, 1, 0, 0, 0), Color(0.117, 0.0117, 0.2, 1, 0, 0, 0), Color(0, 0, 0, 0.8, 0, 0, 0), SoundEffect.SOUND_BOOK_PAGE_TURN_12)
+	end
+	mod:addIllusion(player, true)
 	return true
 end
 mod:AddCallback(ModCallbacks.MC_USE_ITEM, mod.onUseBookOfIllusions, CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS)
 
-function mod:preUseItem(item, rng, player, flags, slot, data) 
-	local playerData = mod:GetData(player)
-	
-	if playerData.IsIllusion then --for some reason dopples can use items so i have to do this
-		return true
-	end
-end
-mod:AddCallback(ModCallbacks.MC_PRE_USE_ITEM, mod.preUseItem)
-
 function mod:onEntityTakeDamage(tookDamage, amount, flags, source, frames) 
-	local data = mod:GetData(tookDamage)
+	local data = mod:GetEntityIndex(tookDamage)
 	
-	if data.IsIllusion then
-		local sprite = tookDamage:GetSprite()
-		tookDamage:Die() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
-		Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, tookDamage.Position, tookDamage.Velocity, tookDamage)
-		sprite:Stop()
-		return false
+	if pDataTable[data].IsIllusion then
+		if not (Game():GetRoom():GetType() == RoomType.ROOM_SACRIFICE and source.Type == 0 and flags & DamageFlag.DAMAGE_SPIKES == DamageFlag.DAMAGE_SPIKES) then		
+			tookDamage:Die() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
+			return false
+		end
+	else
+		mod:RemoveEntityIndex(tookDamage)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_ENTITY_TAKE_DMG, mod.onEntityTakeDamage, EntityType.ENTITY_PLAYER)
 
+function mod:PlayerDeath(e)
+	local d = mod:GetEntityIndex(e)
+	if not pDataTable[d].IsIllusion then
+		for _,p in ipairs(Isaac.FindByType(EntityType.ENTITY_PLAYER,-1,e.SubType)) do
+			local index = mod:GetEntityIndex(p)
+			if pDataTable[index].IsIllusion then
+				if GetPtrHash(p.Parent) == GetPtrHash(e) then
+					p:Kill()
+				end
+			end
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_ENTITY_KILL, mod.PlayerDeath, EntityType.ENTITY_PLAYER)
 
------------------------------------
---Helper Functions (thanks piber)--
------------------------------------
+function mod:AfterDeath(e)
+	if e.Type == EntityType.ENTITY_PLAYER then
+		mod:RemoveEntityIndex(e)
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, mod.AfterDeath)
 
 function mod:GetMaxCollectibleID()
     return Isaac.GetItemConfig():GetCollectibles().Size -1
 end
 
-function mod:GetData(entity)
-	if entity and entity.GetData then
-		local data = entity:GetData()
-		if not data.IllusionMod then
-			data.IllusionMod = {}
+function mod:GetEntityIndex(entity)
+	if entity then
+		if entity.Type == EntityType.ENTITY_PLAYER then
+			local player = entity:ToPlayer()
+			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B then
+				player = player:GetOtherTwin()
+			end
+			local id = 1
+			if player:GetPlayerType() == PlayerType.PLAYER_LAZARUS2_B then
+				id = 2
+			end
+			local index = player:GetCollectibleRNG(id):GetSeed()
+			if not pDataTable[index] then
+				pDataTable[index] = {}
+			end
+			return index
+		elseif entity.Type == EntityType.ENTITY_FAMILIAR then
+			local index = entity:ToFamiliar().InitSeed
+			if not pDataTable[index] then
+				pDataTable[index] = {}
+			end
+			return index
 		end
-		return data.IllusionMod
 	end
 	return nil
 end
 
-OnRenderCounter = 0
-IsEvenRender = true
-mod:AddCallback(ModCallbacks.MC_POST_RENDER, function()
-	OnRenderCounter = OnRenderCounter + 1
-	
-	IsEvenRender = false
-	if Isaac.GetFrameCount()%2 == 0 then
-		IsEvenRender = true
-	end
-end)
-
---ripairs stuff from revel
-function ripairs_it(t,i)
-	i=i-1
-	local v=t[i]
-	if v==nil then return v end
-	return i,v
-end
-function ripairs(t)
-	return ripairs_it, t, #t+1
-end
-
---delayed functions
-DelayedFunctions = {}
-
-function DelayFunction(func, delay, args, removeOnNewRoom, useRender)
-	local delayFunctionData = {
-		Function = func,
-		Delay = delay,
-		Args = args,
-		RemoveOnNewRoom = removeOnNewRoom,
-		OnRender = useRender
-	}
-	table.insert(DelayedFunctions, delayFunctionData)
-end
-
-mod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, function()
-	for i, delayFunctionData in ripairs(DelayedFunctions) do
-		if delayFunctionData.RemoveOnNewRoom then
-			table.remove(DelayedFunctions, i)
-		end
-	end
-end)
-
-local function delayFunctionHandling(onRender)
-	if #DelayedFunctions ~= 0 then
-		for i, delayFunctionData in ripairs(DelayedFunctions) do
-			if (delayFunctionData.OnRender and onRender) or (not delayFunctionData.OnRender and not onRender) then
-				if delayFunctionData.Delay <= 0 then
-					if delayFunctionData.Function then
-						if delayFunctionData.Args then
-							delayFunctionData.Function(table.unpack(delayFunctionData.Args))
-						else
-							delayFunctionData.Function()
-						end
-					end
-					table.remove(DelayedFunctions, i)
-				else
-					delayFunctionData.Delay = delayFunctionData.Delay - 1
-				end
+function mod:RemoveEntityIndex(entity)
+	if entity then
+		if entity.Type == EntityType.ENTITY_PLAYER then
+			local player = entity:ToPlayer()
+			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B then
+				player = player:GetOtherTwin()
 			end
-		end
-	end
-end
-
-mod:AddCallback(ModCallbacks.MC_POST_UPDATE, function()
-	delayFunctionHandling(false)
-end)
-
-mod:AddCallback(ModCallbacks.MC_POST_RENDER, function()
-	delayFunctionHandling(true)
-end)
-
-mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, function()
-	DelayedFunctions = {}
-end)
-
---bigbook pausing
-local hideBerkano = false
-function DoBigbookPause()
-	local player = Isaac.GetPlayer(0)
-	
-	local sfx = SFXManager()
-	
-	hideBerkano = true
-	player:UseCard(Card.RUNE_BERKANO, UseFlag.USE_NOANIM | UseFlag.USE_NOANNOUNCER) --we undo berkano's effects later, this is done purely for the bigbook which our housing mod should have made blank if we got here
-	
-	--remove the blue flies and spiders that just spawned
-	for _, bluefly in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR, FamiliarVariant.BLUE_FLY, -1, false, false)) do
-		if bluefly:Exists() and bluefly.FrameCount <= 0 then
-			bluefly:Remove()
-		end
-	end
-	for _, bluespider in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR, FamiliarVariant.BLUE_SPIDER, -1, false, false)) do
-		if bluespider:Exists() and bluespider.FrameCount <= 0 then
-			bluespider:Remove()
-		end
-	end
-end
-
-local isPausingGame = false
-local isPausingGameTimer = 0
-function KeepPaused()
-	isPausingGame = true
-	isPausingGameTimer = 0
-end
-
-function StopPausing()
-	isPausingGame = false
-	isPausingGameTimer = 0
-end
-
-mod:AddCallback(ModCallbacks.MC_POST_RENDER, function()
-	if isPausingGame then
-		isPausingGameTimer = isPausingGameTimer - 1
-		if isPausingGameTimer <= 0 then
-			isPausingGameTimer = 30
-			DoBigbookPause()
-		end
-	end
-end)
-
-mod:AddCallback(ModCallbacks.MC_USE_CARD, function()
-	if not hideBerkano then
-		DelayFunction(function()
-			local stuffWasSpawned = false
-			
-			for _, bluefly in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR, FamiliarVariant.BLUE_FLY, -1, false, false)) do
-				if bluefly:Exists() and bluefly.FrameCount <= 1 then
-					stuffWasSpawned = true
-					break
-				end
+			local id = 1
+			if player:GetPlayerType() == PlayerType.PLAYER_LAZARUS2_B then
+				id = 2
 			end
-			
-			for _, bluespider in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR, FamiliarVariant.BLUE_SPIDER, -1, false, false)) do
-				if bluespider:Exists() and bluespider.FrameCount <= 1 then
-					stuffWasSpawned = true
-					break
-				end
-			end
-			
-			if stuffWasSpawned then
-				DoBigbook("gfx/ui/giantbook/rune_07_berkano.png", nil, nil, nil, false)
-			end
-		end, 1, nil, false, true)
-	end
-	hideBerkano = false
-end, Card.RUNE_BERKANO)
-
---giantbook overlays
-local shouldRenderGiantbook = false
-local giantbookUI = Sprite()
-giantbookUI:Load("gfx/ui/giantbook/giantbook.anm2", true)
-local giantbookAnimation = "Appear"
-function DoBigbook(spritesheet, sound, animationToPlay, animationFile, doPause)
-
-	if doPause == nil then
-		doPause = true
-	end
-	if doPause then
-		DoBigbookPause()
-	end
-	
-	if not animationToPlay then
-		animationToPlay = "Appear"
-	end
-	
-	if not animationFile then
-		animationFile = "gfx/ui/giantbook/giantbook.anm2"
-		if animationToPlay == "Appear" or animationToPlay == "Shake" then
-			animationFile = "gfx/ui/giantbook/giantbook.anm2"
-		elseif animationToPlay == "Static" then
-			animationToPlay = "Effect"
-			animationFile = "gfx/ui/giantbook/giantbook_clicker.anm2"
-		elseif animationToPlay == "Flash" then
-			animationToPlay = "Idle"
-			animationFile = "gfx/ui/giantbook/giantbook_mama_mega.anm2"
-		elseif animationToPlay == "Sleep" then
-			animationToPlay = "Idle"
-			animationFile = "gfx/ui/giantbook/giantbook_sleep.anm2"
-		elseif animationToPlay == "AppearBig" or animationToPlay == "ShakeBig" then
-			if animationToPlay == "AppearBig" then
-				animationToPlay = "Appear"
-			elseif animationToPlay == "ShakeBig" then
-				animationToPlay = "Shake"
-			end
-			animationFile = "gfx/ui/giantbook/giantbookbig.anm2"
+			local index = player:GetCollectibleRNG(id):GetSeed()
+			pDataTable[index] = nil
+		elseif entity.Type == EntityType.ENTITY_FAMILIAR then
+			local index = entity:ToFamiliar().InitSeed
+			pDataTable[index] = nil
 		end
 	end
-	
-	giantbookAnimation = animationToPlay
-	giantbookUI:Load(animationFile, true)
-	if spritesheet then
-		giantbookUI:ReplaceSpritesheet(0, spritesheet)
-		giantbookUI:LoadGraphics()
-	end
-	giantbookUI:Play(animationToPlay, true)
-	shouldRenderGiantbook = true
-	
-	if sound then
-		local sfx = SFXManager()
-		sfx:Play(sound, 1, 0, false, 1)
-	end
-	
-end
-mod:AddCallback(ModCallbacks.MC_POST_RENDER, function()
-	if ShouldRender() then
-		local centerPos = GetScreenCenterPosition()
-		
-		if IsEvenRender then
-			giantbookUI:Update()
-			if giantbookUI:IsFinished(giantbookAnimation) then
-				shouldRenderGiantbook = false
-			end
-		end
-		
-		if shouldRenderGiantbook then
-			giantbookUI:Render(centerPos, Vector.Zero, Vector.Zero)
-		end
-	end
-end)
-mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, function()
-	shouldRenderGiantbook = false
-end)
-
-function ShouldRender(ignoreMusic, ignoreNoHud)
-
-	local music = MusicManager()
-	local currentMusic = music:GetCurrentMusicID()
-	
-	local game = Game()
-	local seeds = game:GetSeeds()
-
-	if (ignoreMusic or (currentMusic ~= Music.MUSIC_JINGLE_BOSS and currentMusic ~= Music.MUSIC_JINGLE_NIGHTMARE)) and (ignoreNoHud or not seeds:HasSeedEffect(SeedEffect.SEED_NO_HUD)) then
-		return true
-	end
-	
-	return false
-end
-
-function GetScreenCenterPosition()
-
-	local game = Game()
-	local room = game:GetRoom()
-
-	local shape = room:GetRoomShape()
-	local centerOffset = (room:GetCenterPos()) - room:GetTopLeftPos()
-	local pos = room:GetCenterPos()
-	
-	if centerOffset.X > 260 then
-		pos.X = pos.X - 260
-	end
-	if shape == RoomShape.ROOMSHAPE_LBL or shape == RoomShape.ROOMSHAPE_LTL then
-		pos.X = pos.X - 260
-	end
-	if centerOffset.Y > 140 then
-		pos.Y = pos.Y - 140
-	end
-	if shape == RoomShape.ROOMSHAPE_LTR or shape == RoomShape.ROOMSHAPE_LTL then
-		pos.Y = pos.Y - 140
-	end
-	
-	return Isaac.WorldToRenderPosition(pos, false)
-	
 end
