@@ -145,14 +145,16 @@ mod:AddCallback(ModCallbacks.MC_POST_GAME_END, mod.End)
 function mod:UpdateClones(p)
 	local index = mod:GetEntityIndex(p)
 	if pDataTable[index].IsIllusion then
-		if p:IsDead() then
-			p:ChangePlayerType(PlayerType.PLAYER_THELOST)
+		if p:IsDead() and p.IsVisible then
 			p.Visible = false
-			p:GetSprite():SetLastFrame()
-			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position, Vector.Zero, nil)
+			p:GetSprite():SetFrame(70)
+			p:ChangePlayerType(PlayerType.PLAYER_THELOST)
 		end
-		if p.Parent and not p.Parent:Exists() then
-			p:Die()
+		if not p:IsDead() then
+			if p.Parent and (not p.Parent:Exists() or p.Parent:IsDead()) then
+				p:Die()
+				Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position, Vector.Zero, p)
+			end
 		end
 		p:GetEffects():RemoveCollectibleEffect(CollectibleType.COLLECTIBLE_HOLY_MANTLE)
 	end
@@ -205,10 +207,9 @@ function mod:addIllusion(player, isIllusion)
 		
 		_p:AddMaxHearts(2)
 		_p:AddHearts(2)
-		_p.EntityCollisionClass = EntityCollisionClass.ENTCOLL_ENEMIES | EntityCollisionClass.ENTCOLL_PLAYERONLY
 		
 		pDataTable[d].IsIllusion = true
-		Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, _p.Position, _p.Velocity, _p)
+		Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, _p.Position, Vector.Zero, _p)
 	end
 	_p:AddCacheFlags(CacheFlag.CACHE_ALL)
 	_p:EvaluateItems()
@@ -232,11 +233,11 @@ function mod:preIllusionHeartPickup(pickup, collider, low)
 	if player then
 		local i = mod:GetEntityIndex(player)
 		if pDataTable[i].IsIllusion then
-			return false
+			return pickup:IsShopItem()
 		else
 			mod:RemoveEntityIndex(player)
 		end
-		if pickup.SubType == HeartSubType.HEART_ILLUSION then
+		if pickup.Variant == PickupVariant.PICKUP_HEART and pickup.SubType == HeartSubType.HEART_ILLUSION then
 			pickup.Velocity = Vector.Zero
 			pickup.EntityCollisionClass = EntityCollisionClass.ENTCOLL_NONE
 			pickup:GetSprite():Play("Collect", true)
@@ -246,7 +247,7 @@ function mod:preIllusionHeartPickup(pickup, collider, low)
 		end
 	end
 end
-mod:AddCallback(ModCallbacks.MC_PRE_PICKUP_COLLISION, mod.preIllusionHeartPickup, PickupVariant.PICKUP_HEART)
+mod:AddCallback(ModCallbacks.MC_PRE_PICKUP_COLLISION, mod.preIllusionHeartPickup)
 
 function mod:postPickupInit(pickup)
 	local rng = pickup:GetDropRNG()
@@ -272,30 +273,13 @@ function mod:onEntityTakeDamage(tookDamage, amount, flags, source, frames)
 	local data = mod:GetEntityIndex(tookDamage)
 	
 	if pDataTable[data].IsIllusion then
-		if not (Game():GetRoom():GetType() == RoomType.ROOM_SACRIFICE and source.Type == 0 and flags & DamageFlag.DAMAGE_SPIKES == DamageFlag.DAMAGE_SPIKES) then		
+			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, tookDamage.Position, Vector.Zero, tookDamage)
 			tookDamage:Die() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
-			return false
-		end
 	else
 		mod:RemoveEntityIndex(tookDamage)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_ENTITY_TAKE_DMG, mod.onEntityTakeDamage, EntityType.ENTITY_PLAYER)
-
-function mod:PlayerDeath(e)
-	local d = mod:GetEntityIndex(e)
-	if not pDataTable[d].IsIllusion then
-		for _,p in ipairs(Isaac.FindByType(EntityType.ENTITY_PLAYER,-1,e.SubType)) do
-			local index = mod:GetEntityIndex(p)
-			if pDataTable[index].IsIllusion then
-				if GetPtrHash(p.Parent) == GetPtrHash(e) then
-					p:Kill()
-				end
-			end
-		end
-	end
-end
-mod:AddCallback(ModCallbacks.MC_POST_ENTITY_KILL, mod.PlayerDeath, EntityType.ENTITY_PLAYER)
 
 function mod:AfterDeath(e)
 	if e.Type == EntityType.ENTITY_PLAYER then
