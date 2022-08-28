@@ -219,14 +219,16 @@ end
 function mod:CloneCache(p,cache)
 	local d = mod:GetEntityIndex(p)
 	if pDataTable[d].IsIllusion then
-		local color = Color(0.518, 0.22, 1, 0.45)
+		--local color = Color(0.518, 0.22, 1, 0.45)
+		local s = p:GetSprite().Color
+		local color = Color(s.R, s.G, s.B, 0.45,0.518, 0.15, 0.8)
 		local s = p:GetSprite()
 		s.Color = color
 	else
 		mod:RemoveEntityIndex(p)
 	end
 end
-mod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, mod.CloneCache)
+mod:AddCallback(ModCallbacks.MC_POST_PEFFECT_UPDATE, mod.CloneCache)
 
 function mod:preIllusionHeartPickup(pickup, collider, low)
 	local player = collider:ToPlayer()
