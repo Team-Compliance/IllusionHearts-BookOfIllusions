@@ -169,9 +169,10 @@ function mod:addIllusion(player, isIllusion)
 		playerType = PlayerType.PLAYER_ESAU 
 	end
 	if playerType == PlayerType.PLAYER_LAZARUS_B or playerType == PlayerType.PLAYER_LAZARUS2_B then
-		Isaac.ExecuteCommand('addplayer 0 '..player.ControllerIndex)
+		Isaac.ExecuteCommand('addplayer 15 '..player.ControllerIndex)
 		local _p = Isaac.GetPlayer(id + 1)
 		local d = mod:GetEntityIndex(_p)
+		_p:ChangePlayerType(0)
 		if playerType == PlayerType.PLAYER_LAZARUS_B then
 			pDataTable[d].TaintedLazA = true
 		else
@@ -244,18 +245,18 @@ mod:AddCallback(ModCallbacks.MC_POST_PEFFECT_UPDATE, mod.CloneCache)
 
 function mod:HackyLazWorkAround(player,cache)
 	local i = mod:GetEntityIndex(player)
-	if pDataTable[i].isIllusion then
+	if pDataTable[i].IsIllusion then
 		if pDataTable[i].TaintedLazA == true then
 			if cache == CacheFlag.CACHE_RANGE then
-				player.TearRange = player.TearRange - 180
+				player.TearRange = player.TearRange - 80
 			end
 		elseif pDataTable[i].TaintedLazB == true then
 			if cache == CacheFlag.CACHE_DAMAGE then
 				player.Damage = player.Damage * 1.50
 			elseif cache == CacheFlag.CACHE_FIREDELAY then
-				player.MaxFireDelay = player.MaxFireDelay - 0.1
+				player.MaxFireDelay = player.MaxFireDelay + 1
 			elseif cache == CacheFlag.CACHE_SPEED then
-				player.Speed = player.Speed - 0.1
+				player.MoveSpeed = player.MoveSpeed - 0.1
 			elseif cache == CacheFlag.CACHE_LUCK then
 				player.Luck = player.Luck - 2
 			end
