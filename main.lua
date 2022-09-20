@@ -168,8 +168,16 @@ function mod:addIllusion(player, isIllusion)
 		player = player:GetOtherTwin()
 		playerType = PlayerType.PLAYER_ESAU 
 	end
-	
-	Isaac.ExecuteCommand('addplayer '..playerType..' '..player.ControllerIndex)
+	if playerType == PlayerType.PLAYER_LAZARUS_B or playerType == PlayerType.PLAYER_LAZARUS2_B then
+		Isaac.ExecuteCommand('addplayer 0 '..player.ControllerIndex)
+		local _p = Isaac.GetPlayer(id + 1)
+		local d = mod:GetEntityIndex(_p)
+		pDataTable[d].TaintedLaz = true
+		local costume = playerType == PlayerType.PLAYER_LAZARUS_B and NullItemID.ID_LAZARUS_B or NullItemID.ID_LAZARUS2_B
+		_p:AddNullCostume(costume)
+	else
+		Isaac.ExecuteCommand('addplayer '..playerType..' '..player.ControllerIndex)
+	end
 	local _p = Isaac.GetPlayer(id + 1)
 	local d = mod:GetEntityIndex(_p)
 	if isIllusion then
@@ -194,7 +202,7 @@ function mod:addIllusion(player, isIllusion)
 		for i = 2, 0, -1 do
 			local c = _p:GetActiveItem(i)
 			if c > 0 then
-				_p:RemoveCollectible(c)
+				_p:RemoveCollectible(c,false,i)
 			end
 		end
 		
