@@ -172,7 +172,11 @@ function mod:addIllusion(player, isIllusion)
 		Isaac.ExecuteCommand('addplayer 0 '..player.ControllerIndex)
 		local _p = Isaac.GetPlayer(id + 1)
 		local d = mod:GetEntityIndex(_p)
-		pDataTable[d].TaintedLaz = true
+		if playerType == PlayerType.PLAYER_LAZARUS_B then
+			pDataTable[d].TaintedLazA = true
+		else
+			pDataTable[d].TaintedLazB = true
+		end
 		local costume = playerType == PlayerType.PLAYER_LAZARUS_B and NullItemID.ID_LAZARUS_B or NullItemID.ID_LAZARUS2_B
 		_p:AddNullCostume(costume)
 	else
@@ -238,6 +242,28 @@ function mod:CloneCache(p,cache)
 end
 mod:AddCallback(ModCallbacks.MC_POST_PEFFECT_UPDATE, mod.CloneCache)
 
+function mod:HackyLazWorkAround(player,cache)
+	local i = mod:GetEntityIndex(player)
+	if pDataTable[i].isIllusion then
+		if pDataTable[i].TaintedLazA == true then
+			if cache == CacheFlag.CACHE_RANGE then
+				player.TearRange = player.TearRange - 180
+			end
+		elseif pDataTable[i].TaintedLazB == true then
+			if cache == CacheFlag.CACHE_DAMAGE then
+				player.Damage = player.Damage * 1.50
+			elseif cache == CacheFlag.CACHE_FIREDELAY then
+				player.MaxFireDelay = player.MaxFireDelay - 0.1
+			elseif cache == CacheFlag.CACHE_SPEED then
+				player.Speed = player.Speed - 0.1
+			elseif cache == CacheFlag.CACHE_LUCK then
+				player.Luck = player.Luck - 2
+			end
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, mod.HackyLazWorkAround)
+
 function mod:preIllusionHeartPickup(pickup, collider, low)
 	local player = collider:ToPlayer()
 	if player then
@@ -297,6 +323,19 @@ function mod:AfterDeath(e)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, mod.AfterDeath)
+
+function mod:ClonesControls(entity,hook,action)
+	if entity ~= nil and entity.Type == EntityType.ENTITY_PLAYER then
+		local player = entity:ToPlayer()
+		local d = mod:GetEntityIndex(player)
+		if pDataTable[d].IsIllusion then
+			if action == ButtonAction.ACTION_BOMB then
+				return false
+			end
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_INPUT_ACTION, mod.ClonesControls, InputHook.IS_ACTION_TRIGGERED)
 
 function mod:GetMaxCollectibleID()
     return Isaac.GetItemConfig():GetCollectibles().Size -1
