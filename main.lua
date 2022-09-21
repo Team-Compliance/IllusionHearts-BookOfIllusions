@@ -1,6 +1,7 @@
 IllusionMod = RegisterMod("Illusion Hearts + Book of Illusions", 1)
 local mod = IllusionMod
 local json = require("json")
+local version = 2.3
 
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
@@ -19,6 +20,8 @@ local ForbiddenItems = {
 	CollectibleType.COLLECTIBLE_ANKH,
 	CollectibleType.COLLECTIBLE_JUDAS_SHADOW,
 }
+
+local MCMIllusionsBombs = false
 
 local ForbiddenPCombos = {
 	{PlayerType = PlayerType.PLAYER_THELOST_B, Item = CollectibleType.COLLECTIBLE_BIRTHRIGHT},
@@ -80,6 +83,29 @@ if ExtraBirthright then
     ExtraBirthright.AddBookToBirthrightEffect(CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS)
 end
 
+if ModConfigMenu then
+	local IHandBoI = "Illusions mod"
+	ModConfigMenu.UpdateCategory(IHandBoI, {
+		Info = {"Configuration for clones.",}
+	})
+	ModConfigMenu.AddSetting(IHandBoI,
+		{
+			Type = ModConfigMenu.OptionType.BOOLEAN,
+			CurrentSetting = function()
+				return MCMIllusionsBombs
+			end,
+			Default = false,
+			Display = function()
+				local displaystring = MCMIllusionsBombs == true and "On" or "Off"
+				return "Illusions can use bombs: "..displaystring
+			end,
+			OnChange = function(value)
+				MCMIllusionsBombs = value
+			end,
+			Info = "Option for clones to drop bombs."
+		})
+end
+
 local function BlackList(collectible)
 	for _,i in ipairs(ForbiddenItems) do
 		if i == collectible then
@@ -100,21 +126,37 @@ end
 
 function mod:Save(isSaving)
 	if isSaving then
+		local save = {}
 		local playersSave = { }
 		for key,value in pairs(pDataTable) do
 			if value ~= nil and key ~= nil then
 				playersSave[tostring(key)] = value
 			end
 		end
-		mod:SaveData(json.encode(playersSave))
+		save.Players = playersSave
+		save.Version = version
+		save.BombOption = MCMIllusionsBombs
+		mod:SaveData(json.encode(save))
 	end
 end
 mod:AddCallback(ModCallbacks.MC_PRE_GAME_EXIT, mod.Save)
 
 function mod:Load(isLoading)
 	pDataTable = {}
-	if isLoading and mod:HasData() then
-		local playersLoad = json.decode(mod:LoadData())
+	local load
+	if mod:HasData() then
+		load = json.decode(mod:LoadData())
+		if load.Version ~= nil and load.Version >= 2.3 then
+			MCMIllusionsBombs = load.BombOption
+		end
+	end
+	if isLoading then
+		local playersLoad
+		if load.Version == nil or load.Version ~= nil and load.Version < 2.3 then
+			playersLoad = load
+		else
+			playersLoad = load.Players
+		end
 		for key,value in pairs(playersLoad) do
 			if value ~= nil and key ~= nil then
 				pDataTable[tonumber(key)] = value
@@ -137,7 +179,8 @@ mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, mod.Load)
 function mod:End(GameOver)
 	if GameOver then
 		pDataTable = {}
-		mod:RemoveData()
+		local save = {Version = version, BombOption = MCMIllusionsBombs}
+		mod:SaveData(json.encode(save))
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_GAME_END, mod.End)
@@ -326,7 +369,7 @@ end
 mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, mod.AfterDeath)
 
 function mod:ClonesControls(entity,hook,action)
-	if entity ~= nil and entity.Type == EntityType.ENTITY_PLAYER then
+	if entity ~= nil and entity.Type == EntityType.ENTITY_PLAYER and not MCMIllusionsBombs then
 		local player = entity:ToPlayer()
 		local d = mod:GetEntityIndex(player)
 		if pDataTable[d].IsIllusion then
