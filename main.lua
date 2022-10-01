@@ -2,7 +2,9 @@ IllusionMod = RegisterMod("Illusion Hearts + Book of Illusions", 1)
 local mod = IllusionMod
 local json = require("json")
 local sfxManager = SFXManager()
-local version = 2.3
+local version = 2.4
+local game = Game()
+local hud = game:GetHUD()
 
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
@@ -165,14 +167,14 @@ function mod:Load(isLoading)
 				pDataTable[tonumber(key)] = value
 			end
 		end
-		for i = 0, Game():GetNumPlayers()-1 do
+		for i = 0, game:GetNumPlayers()-1 do
 			local p = Isaac.GetPlayer(i)
-			local index = mod:GetEntityIndex(p)
-			if pDataTable[index].IsIllusion then
+			local data = mod.GetEntityData(p)
+			if data.IsIllusion then
 				p:AddCacheFlags(CacheFlag.CACHE_ALL)
 				p:EvaluateItems()
 			else
-				mod:RemoveEntityIndex(p)
+				data = nil
 			end
 		end
 	end
@@ -189,8 +191,8 @@ end
 mod:AddCallback(ModCallbacks.MC_POST_GAME_END, mod.End)
 
 function mod:UpdateClones(p)
-	local index = mod:GetEntityIndex(p)
-	if pDataTable[index].IsIllusion then
+	local data = mod.GetEntityData(p)
+	if data.IsIllusion then
 		if p:IsDead() and p.IsVisible then
 			p.Visible = false
 			p:GetSprite():SetFrame(70)
@@ -208,32 +210,33 @@ end
 mod:AddCallback(ModCallbacks.MC_POST_PLAYER_UPDATE, mod.UpdateClones)
 
 function mod:addIllusion(player, isIllusion)
-	local id = Game():GetNumPlayers() - 1
+	local id = game:GetNumPlayers() - 1
 	local playerType = player:GetPlayerType()
 	if playerType == PlayerType.PLAYER_JACOB then 
 		player = player:GetOtherTwin()
 		playerType = PlayerType.PLAYER_ESAU 
 	end
+	if playerType == PlayerType.PLAYER_THESOUL_B then
+		playerType = PlayerType.PLAYER_THEFORGOTTEN_B
+	end
+	Isaac.ExecuteCommand('addplayer 15 '..player.ControllerIndex)
+	local _p = Isaac.GetPlayer(id + 1)
+	local d = mod.GetEntityData(_p)
 	if playerType == PlayerType.PLAYER_LAZARUS_B or playerType == PlayerType.PLAYER_LAZARUS2_B then
-		Isaac.ExecuteCommand('addplayer 15 '..player.ControllerIndex)
-		local _p = Isaac.GetPlayer(id + 1)
-		local d = mod:GetEntityIndex(_p)
 		_p:ChangePlayerType(0)
 		if playerType == PlayerType.PLAYER_LAZARUS_B then
-			pDataTable[d].TaintedLazA = true
+			d.TaintedLazA = true
 		else
-			pDataTable[d].TaintedLazB = true
+			d.TaintedLazB = true
 		end
 		local costume = playerType == PlayerType.PLAYER_LAZARUS_B and NullItemID.ID_LAZARUS_B or NullItemID.ID_LAZARUS2_B
 		_p:AddNullCostume(costume)
 	else
-		Isaac.ExecuteCommand('addplayer '..playerType..' '..player.ControllerIndex)
+		_p:ChangePlayerType(playerType)--Isaac.ExecuteCommand('addplayer '..playerType..' '..player.ControllerIndex)
 	end
-	local _p = Isaac.GetPlayer(id + 1)
-	local d = mod:GetEntityIndex(_p)
 	if isIllusion then
 		_p.Parent = player
-		Game():GetHUD():AssignPlayerHUDs()
+		hud:AssignPlayerHUDs()
 		
 		for i=1, mod:GetMaxCollectibleID() do
 			if not BlackList(i) and not CanBeRevived(playerType,i) then
@@ -263,41 +266,45 @@ function mod:addIllusion(player, isIllusion)
 		_p:AddGoldenHearts(-_p:GetGoldenHearts())
 		_p:AddEternalHearts(-_p:GetEternalHearts())
 		_p:AddHearts(-_p:GetHearts())
-		
+
 		_p:AddMaxHearts(2)
 		_p:AddHearts(2)
-		
-		pDataTable[d].IsIllusion = true
+
+		d.IsIllusion = true
+		if playerType == PlayerType.PLAYER_THEFORGOTTEN_B then
+			local dl = mod.GetEntityData(_p:GetOtherTwin())
+			dl.IsIllusion = true
+			_p:GetOtherTwin().Parent = player:GetOtherTwin()
+		end
 		Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, _p.Position, Vector.Zero, _p)
 	end
 	_p:AddCacheFlags(CacheFlag.CACHE_ALL)
 	_p:EvaluateItems()
-	sfxManager:Play(PickupIllusionSFX)
 	return _p
 end
 
 function mod:CloneCache(p,cache)
-	local d = mod:GetEntityIndex(p)
-	if pDataTable[d].IsIllusion then
+	local d = mod.GetEntityData(p)
+	if d.IsIllusion then
 		--local color = Color(0.518, 0.22, 1, 0.45)
 		local s = p:GetSprite().Color
 		local color = Color(s.R, s.G, s.B, 0.45,0.518, 0.15, 0.8)
 		local s = p:GetSprite()
 		s.Color = color
 	else
-		mod:RemoveEntityIndex(p)
+		d = nil
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_PEFFECT_UPDATE, mod.CloneCache)
 
 function mod:HackyLazWorkAround(player,cache)
-	local i = mod:GetEntityIndex(player)
-	if pDataTable[i].IsIllusion then
-		if pDataTable[i].TaintedLazA == true then
+	local d = mod.GetEntityData(player)
+	if d.IsIllusion then
+		if d.TaintedLazA == true then
 			if cache == CacheFlag.CACHE_RANGE then
 				player.TearRange = player.TearRange - 80
 			end
-		elseif pDataTable[i].TaintedLazB == true then
+		elseif d.TaintedLazB == true then
 			if cache == CacheFlag.CACHE_DAMAGE then
 				player.Damage = player.Damage * 1.50
 			elseif cache == CacheFlag.CACHE_FIREDELAY then
@@ -315,11 +322,11 @@ mod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, mod.HackyLazWorkAround)
 function mod:preIllusionHeartPickup(pickup, collider, low)
 	local player = collider:ToPlayer()
 	if player then
-		local i = mod:GetEntityIndex(player)
-		if pDataTable[i].IsIllusion then
+		local d = mod.GetEntityData(player)
+		if d.IsIllusion or player.Parent then
 			return pickup:IsShopItem()
 		else
-			mod:RemoveEntityIndex(player)
+			d = nil
 		end
 		if pickup.Variant == PickupVariant.PICKUP_HEART and pickup.SubType == HeartSubType.HEART_ILLUSION then
 			pickup.Velocity = Vector.Zero
@@ -327,15 +334,25 @@ function mod:preIllusionHeartPickup(pickup, collider, low)
 			pickup:GetSprite():Play("Collect", true)
 			pickup:Die()
 			mod:addIllusion(player, true)
+			sfxManager:Play(PickupIllusionSFX,1,0,false)
 			return true		
 		end
 	end
 end
 mod:AddCallback(ModCallbacks.MC_PRE_PICKUP_COLLISION, mod.preIllusionHeartPickup)
 
+function mod:preIllusionWhiteFlame(player, collider, low)
+	if collider.Type == EntityType.ENTITY_FIREPLACE and collider.Variant == 4 then
+		local d = mod.GetEntityData(player)
+		if d.IsIllusion or player.Parent then
+			player:Kill()
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_PRE_PLAYER_COLLISION, mod.preIllusionWhiteFlame)
+
 function mod:postPickupInit(pickup)
 	local rng = pickup:GetDropRNG()
-	
 	if pickup.SubType == HeartSubType.HEART_GOLDEN and player:GetSprite():GetAnimation() == "Appear" then
 		if rng:RandomFloat() >= 0.5 then
 			pickup:Morph(pickup.Type, pickup.Variant, HeartSubType.HEART_ILLUSION)
@@ -348,36 +365,52 @@ function mod:onUseBookOfIllusions(boi, rng, player, flags, slot, data)
 	if GiantBookAPI then
 		GiantBookAPI.playGiantBook("Appear", "Illusions.png", Color(0.2, 0.1, 0.3, 1, 0, 0, 0), Color(0.117, 0.0117, 0.2, 1, 0, 0, 0), Color(0, 0, 0, 0.8, 0, 0, 0), SoundEffect.SOUND_BOOK_PAGE_TURN_12)
 	end
+	sfxManager:Play(SoundEffect.SOUND_BOOK_PAGE_TURN_12, 1, 0, false, 1)
 	mod:addIllusion(player, true)
 	return true
 end
 mod:AddCallback(ModCallbacks.MC_USE_ITEM, mod.onUseBookOfIllusions, CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS)
 
 function mod:onEntityTakeDamage(tookDamage, amount, flags, source, frames) 
-	local data = mod:GetEntityIndex(tookDamage)
-	
-	if pDataTable[data].IsIllusion then
+	local data = mod.GetEntityData(tookDamage)
+	if data.IsIllusion then
 			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, tookDamage.Position, Vector.Zero, tookDamage)
-			tookDamage:Die() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
+			tookDamage:Kill() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
 	else
-		mod:RemoveEntityIndex(tookDamage)
+		data = nil
 	end
 end
 mod:AddCallback(ModCallbacks.MC_ENTITY_TAKE_DMG, mod.onEntityTakeDamage, EntityType.ENTITY_PLAYER)
 
 function mod:AfterDeath(e)
 	if e.Type == EntityType.ENTITY_PLAYER then
-		mod:RemoveEntityIndex(e)
+		local data = mod.GetEntityData(e:ToPlayer())
+		data = nil
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, mod.AfterDeath)
 
+function mod:DarkEsau(e)
+	if e.SpawnerEntity and e.SpawnerEntity:ToPlayer() then
+		local p = e.SpawnerEntity:ToPlayer()
+		local d = mod.GetEntityData(p)
+		if d.IsIllusion then
+			local s = e:GetSprite().Color
+			local color = Color(s.R, s.G, s.B, 0.45,0.518, 0.15, 0.8)
+			local s = e:GetSprite()
+			s.Color = color
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_NPC_RENDER, mod.DarkEsau, EntityType.ENTITY_DARK_ESAU)
+
 function mod:ClonesControls(entity,hook,action)
 	if entity ~= nil and entity.Type == EntityType.ENTITY_PLAYER and not MCMIllusionsBombs then
 		local player = entity:ToPlayer()
-		local d = mod:GetEntityIndex(player)
-		if pDataTable[d].IsIllusion then
-			if action == ButtonAction.ACTION_BOMB then
+		local d = mod.GetEntityData(player)
+		if d.IsIllusion then
+			if action == ButtonAction.ACTION_BOMB or action == ButtonAction.ACTION_PILLCARD or
+			action == ButtonAction.ACTION_ITEM then
 				return false
 			end
 		end
@@ -389,11 +422,12 @@ function mod:GetMaxCollectibleID()
     return Isaac.GetItemConfig():GetCollectibles().Size -1
 end
 
-function mod:GetEntityIndex(entity)
+function mod.GetEntityData(entity,forgottenB)
+	forgottenB = forgottenB or false
 	if entity then
 		if entity.Type == EntityType.ENTITY_PLAYER then
 			local player = entity:ToPlayer()
-			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B then
+			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B and forgottenB then
 				player = player:GetOtherTwin()
 			end
 			local id = 1
@@ -404,34 +438,14 @@ function mod:GetEntityIndex(entity)
 			if not pDataTable[index] then
 				pDataTable[index] = {}
 			end
-			return index
+			return pDataTable[index]
 		elseif entity.Type == EntityType.ENTITY_FAMILIAR then
 			local index = entity:ToFamiliar().InitSeed
 			if not pDataTable[index] then
 				pDataTable[index] = {}
 			end
-			return index
+			return pDataTable[index]
 		end
 	end
 	return nil
-end
-
-function mod:RemoveEntityIndex(entity)
-	if entity then
-		if entity.Type == EntityType.ENTITY_PLAYER then
-			local player = entity:ToPlayer()
-			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B then
-				player = player:GetOtherTwin()
-			end
-			local id = 1
-			if player:GetPlayerType() == PlayerType.PLAYER_LAZARUS2_B then
-				id = 2
-			end
-			local index = player:GetCollectibleRNG(id):GetSeed()
-			pDataTable[index] = nil
-		elseif entity.Type == EntityType.ENTITY_FAMILIAR then
-			local index = entity:ToFamiliar().InitSeed
-			pDataTable[index] = nil
-		end
-	end
 end
