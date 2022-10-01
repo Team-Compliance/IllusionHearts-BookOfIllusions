@@ -1,0 +1,6 @@
+<sounds root="sfx/">
+	<sound name="PickupIllusion">
+		<sample weight="1" path="pickup_illusion.wav" />
+		<sample weight="1" path="pickup_illusion_2.wav" />
+	</sound>
+</sounds>
