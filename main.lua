@@ -5,6 +5,9 @@ local sfxManager = SFXManager()
 local version = 2.4
 local game = Game()
 local hud = game:GetHUD()
+local illisionSprite = Sprite()
+illisionSprite:Load("gfx/ui/ui_hearts_illusion.anm2",true)
+illisionSprite:Play("IllusionHeart",true)
 
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
@@ -129,12 +132,64 @@ local function CanBeRevived(pType,withItem)
 	return false
 end
 
+local function cloneHeartPos(hearts,hpOffset,p)
+	return Isaac.WorldToScreen(p.Position) + p.PositionOffset * 0.75 + Vector(hearts*6-11-(hpOffset-1)*5+5*(hpOffset>5 and hpOffset-6 or 0), -30 * p.SpriteScale.Y - (p.CanFly and 4 or 0))
+end
+
+---Rendering hearts
+---@param player EntityPlayer
+---@param playeroffset integer
+local function renderingHearts(player,playeroffset)
+	local transperancy = 1
+	if player:GetEffects():HasNullEffect(NullItemID.ID_LOST_CURSE) then
+		transperancy = 0.5
+	end
+	local offset = cloneHeartPos(1,0,player)
+	
+	illisionSprite.Color = Color(1,1,1,transperancy)
+	illisionSprite:Render(Vector(offset.X, offset.Y), Vector(0,0), Vector(0,0))
+
+end
+
+---Should show hearts
+---@return boolean
+local function shouldDeHook()
+	local reqs = {
+	  not hud:IsVisible(),
+	  game:GetSeeds():HasSeedEffect(SeedEffect.SEED_NO_HUD),
+	  game:GetLevel():GetCurses() & LevelCurse.CURSE_OF_THE_UNKNOWN ~= 0
+	}
+	return reqs[1] or reqs[2] or reqs[3]
+end
+
+---Handling of rendering for clone
+function mod:onRenderClone()
+	if shouldDeHook() then return end
+	for i = 0, game:GetNumPlayers() - 1 do
+		local player = Isaac.GetPlayer(i)
+		local data = mod.GetEntityData(player)
+		---@cast player EntityPlayer
+		if data.IsIllusion then
+			if player:GetPlayerType() ~= PlayerType.PLAYER_THESOUL_B then
+				renderingHearts(player)
+			end
+		else
+			mod:RemovetEntityData(player)
+		end
+	end
+end
+
+mod:AddCallback(ModCallbacks.MC_POST_RENDER, mod.onRenderClone)
+
 function mod:Save(isSaving)
 	if isSaving then
 		local save = {}
-		local playersSave = { }
+		local playersSave = nil
 		for key,value in pairs(pDataTable) do
 			if value ~= nil and key ~= nil then
+				if playersSave == nil then
+					playersSave = {}
+				end
 				playersSave[tostring(key)] = value
 			end
 		end
@@ -162,9 +217,11 @@ function mod:Load(isLoading)
 		else
 			playersLoad = load.Players
 		end
-		for key,value in pairs(playersLoad) do
-			if value ~= nil and key ~= nil then
-				pDataTable[tonumber(key)] = value
+		if playersLoad ~= nil then
+			for key,value in pairs(playersLoad) do
+				if value ~= nil and key ~= nil then
+					pDataTable[tonumber(key)] = value
+				end
 			end
 		end
 		for i = 0, game:GetNumPlayers()-1 do
@@ -174,7 +231,7 @@ function mod:Load(isLoading)
 				p:AddCacheFlags(CacheFlag.CACHE_ALL)
 				p:EvaluateItems()
 			else
-				data = nil
+				mod:RemovetEntityData(p)
 			end
 		end
 	end
@@ -377,15 +434,14 @@ function mod:onEntityTakeDamage(tookDamage, amount, flags, source, frames)
 			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, tookDamage.Position, Vector.Zero, tookDamage)
 			tookDamage:Kill() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
 	else
-		data = nil
+		mod:RemovetEntityData(tookDamage)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_ENTITY_TAKE_DMG, mod.onEntityTakeDamage, EntityType.ENTITY_PLAYER)
 
 function mod:AfterDeath(e)
 	if e.Type == EntityType.ENTITY_PLAYER then
-		local data = mod.GetEntityData(e:ToPlayer())
-		data = nil
+		mod:RemovetEntityData(e)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, mod.AfterDeath)
@@ -448,4 +504,29 @@ function mod.GetEntityData(entity,forgottenB)
 		end
 	end
 	return nil
+end
+
+function mod:RemovetEntityData(entity,forgottenB)
+	forgottenB = forgottenB or false
+	if entity then
+		if entity.Type == EntityType.ENTITY_PLAYER then
+			local player = entity:ToPlayer()
+			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B and forgottenB then
+				player = player:GetOtherTwin()
+			end
+			local id = 1
+			if player:GetPlayerType() == PlayerType.PLAYER_LAZARUS2_B then
+				id = 2
+			end
+			local index = player:GetCollectibleRNG(id):GetSeed()
+			if pDataTable[index] then
+				pDataTable[index] = nil
+			end
+		elseif entity.Type == EntityType.ENTITY_FAMILIAR then
+			local index = entity:ToFamiliar().InitSeed
+			if pDataTable[index] then
+				pDataTable[index] = nil
+			end
+		end
+	end
 end
