@@ -1,10 +1,13 @@
 IllusionMod = RegisterMod("Illusion Hearts + Book of Illusions", 1)
 local mod = IllusionMod
 local json = require("json")
+local sfxManager = SFXManager()
 local version = 2.3
 
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
+
+local PickupIllusionSFX = Isaac.GetSoundIdByName("PickupIllusion")
 
 local BOIDesc = "Spawns an illusion clone when used#Illusion clones are the same character as you and die in one hit"
 local BOIDescSpa = "Genera un clon de ilusión tras usarlo#El clon es el mismo personaje que el tuyo#Morirá al recibir un golpe"
@@ -269,6 +272,7 @@ function mod:addIllusion(player, isIllusion)
 	end
 	_p:AddCacheFlags(CacheFlag.CACHE_ALL)
 	_p:EvaluateItems()
+	sfxManager:Play(PickupIllusionSFX)
 	return _p
 end
 
