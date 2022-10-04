@@ -5,9 +5,9 @@ local sfxManager = SFXManager()
 local version = 2.4
 local game = Game()
 local hud = game:GetHUD()
-local illisionSprite = Sprite()
+--[[local illisionSprite = Sprite()
 illisionSprite:Load("gfx/ui/ui_hearts_illusion.anm2",true)
-illisionSprite:Play("IllusionHeart",true)
+illisionSprite:Play("IllusionHeart",true)]]
 
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
@@ -132,7 +132,7 @@ local function CanBeRevived(pType,withItem)
 	return false
 end
 
-local function cloneHeartPos(hearts,hpOffset,p)
+--[[local function cloneHeartPos(hearts,hpOffset,p)
 	return Isaac.WorldToScreen(p.Position) + p.PositionOffset * 0.75 + Vector(hearts*6-11-(hpOffset-1)*5+5*(hpOffset>5 and hpOffset-6 or 0), -30 * p.SpriteScale.Y - (p.CanFly and 4 or 0))
 end
 
@@ -163,10 +163,10 @@ local function shouldDeHook()
 end
 
 ---Handling of rendering for clone
-function mod:onRenderClone()
+function mod:onRenderClone(player)
 	if shouldDeHook() then return end
-	for i = 0, game:GetNumPlayers() - 1 do
-		local player = Isaac.GetPlayer(i)
+	--for i = 0, game:GetNumPlayers() - 1 do
+		--local player = Isaac.GetPlayer(i)
 		local data = mod.GetEntityData(player)
 		---@cast player EntityPlayer
 		if data.IsIllusion then
@@ -176,10 +176,10 @@ function mod:onRenderClone()
 		else
 			mod:RemovetEntityData(player)
 		end
-	end
+	--end
 end
 
-mod:AddCallback(ModCallbacks.MC_POST_RENDER, mod.onRenderClone)
+mod:AddCallback(ModCallbacks.MC_POST_PLAYER_RENDER, mod.onRenderClone)]]
 
 function mod:Save(isSaving)
 	if isSaving then
