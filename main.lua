@@ -174,7 +174,7 @@ function mod:onRenderClone(player)
 				renderingHearts(player)
 			end
 		else
-			mod:RemovetEntityData(player)
+			mod:RemoveEntityData(player)
 		end
 	--end
 end
@@ -231,7 +231,7 @@ function mod:Load(isLoading)
 				p:AddCacheFlags(CacheFlag.CACHE_ALL)
 				p:EvaluateItems()
 			else
-				mod:RemovetEntityData(p)
+				mod:RemoveEntityData(p)
 			end
 		end
 	end
@@ -250,21 +250,52 @@ mod:AddCallback(ModCallbacks.MC_POST_GAME_END, mod.End)
 function mod:UpdateClones(p)
 	local data = mod.GetEntityData(p)
 	if data.IsIllusion then
-		if p:IsDead() and p.IsVisible then
-			p.Visible = false
-			p:GetSprite():SetFrame(70)
-			p:ChangePlayerType(PlayerType.PLAYER_THELOST)
+		if p:IsDead()  then
+			--p.Visible = false
+			if p:GetPlayerType() ~= PlayerType.PLAYER_THELOST and p:GetPlayerType() ~= PlayerType.PLAYER_THELOST_B 
+			and p:GetPlayerType() ~= PlayerType.PLAYER_THESOUL_B then
+				p:GetSprite():SetLayerFrame(PlayerSpriteLayer.SPRITE_GHOST,0)
+			end
+			if p:GetSprite():IsFinished("Death") or p:GetSprite():IsFinished("ForgottenDeath") then
+				p:GetSprite():SetFrame(70)
+				if p:GetPlayerType() ~= PlayerType.PLAYER_THELOST and p:GetPlayerType() ~= PlayerType.PLAYER_THELOST_B and
+				p:GetPlayerType() ~= PlayerType.PLAYER_THESOUL and p:GetPlayerType() ~= PlayerType.PLAYER_THESOUL_B  and p:GetPlayerType() ~= PlayerType.PLAYER_THEFORGOTTEN_B
+				and not p:GetEffects():HasNullEffect(NullItemID.ID_LOST_CURSE) then
+					p:ChangePlayerType(PlayerType.PLAYER_THELOST)
+					local offset = (p:GetPlayerType() ~= PlayerType.PLAYER_THEFORGOTTEN or p:GetPlayerType() ~= PlayerType.PLAYER_THEFORGOTTEN_B) and Vector(30 * p.SpriteScale.X,0) or Vector.Zero
+					Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position + offset, Vector.Zero, p)
+				end
+			end
 		end
 		if not p:IsDead() then
 			if p.Parent and (not p.Parent:Exists() or p.Parent:IsDead()) then
 				p:Die()
-				Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position, Vector.Zero, p)
+				p:AddMaxHearts(-p:GetMaxHearts())
+				p:AddSoulHearts(-p:GetSoulHearts())
+				p:AddBoneHearts(-p:GetBoneHearts())
+				p:AddGoldenHearts(-p:GetGoldenHearts())
+				p:AddEternalHearts(-p:GetEternalHearts())
+				p:AddHearts(-p:GetHearts())
+				--Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position, Vector.Zero, p)
 			end
 		end
 		p:GetEffects():RemoveCollectibleEffect(CollectibleType.COLLECTIBLE_HOLY_MANTLE)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_PLAYER_UPDATE, mod.UpdateClones)
+
+function mod:CloneRoomUpdate()
+	for i = 0, game:GetNumPlayers()-1 do
+		local p = Isaac.GetPlayer(i)
+		local data = mod.GetEntityData(p)
+		if data.IsIllusion and p:IsDead() then
+			p:GetSprite():SetFrame(70)
+			p:ChangePlayerType(PlayerType.PLAYER_THELOST)
+			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, p.Position, Vector.Zero, p)
+		end
+	end
+end
+mod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, mod.CloneRoomUpdate)
 
 function mod:addIllusion(player, isIllusion)
 	local id = game:GetNumPlayers() - 1
@@ -275,6 +306,9 @@ function mod:addIllusion(player, isIllusion)
 	end
 	if playerType == PlayerType.PLAYER_THESOUL_B then
 		playerType = PlayerType.PLAYER_THEFORGOTTEN_B
+	end
+	if playerType == PlayerType.PLAYER_THESOUL then
+		playerType = PlayerType.PLAYER_THEFORGOTTEN
 	end
 	Isaac.ExecuteCommand('addplayer 15 '..player.ControllerIndex)
 	local _p = Isaac.GetPlayer(id + 1)
@@ -335,6 +369,7 @@ function mod:addIllusion(player, isIllusion)
 		end
 		Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, _p.Position, Vector.Zero, _p)
 	end
+	_p:PlayExtraAnimation("Appear")
 	_p:AddCacheFlags(CacheFlag.CACHE_ALL)
 	_p:EvaluateItems()
 	return _p
@@ -398,11 +433,17 @@ function mod:preIllusionHeartPickup(pickup, collider, low)
 end
 mod:AddCallback(ModCallbacks.MC_PRE_PICKUP_COLLISION, mod.preIllusionHeartPickup)
 
-function mod:preIllusionWhiteFlame(player, collider, low)
+function mod:preIllusionWhiteFlame(p, collider, low)
 	if collider.Type == EntityType.ENTITY_FIREPLACE and collider.Variant == 4 then
-		local d = mod.GetEntityData(player)
-		if d.IsIllusion or player.Parent then
-			player:Kill()
+		local d = mod.GetEntityData(p)
+		if d.IsIllusion or p.Parent then
+			p:Kill()
+			p:AddMaxHearts(-p:GetMaxHearts())
+			p:AddSoulHearts(-p:GetSoulHearts())
+			p:AddBoneHearts(-p:GetBoneHearts())
+			p:AddGoldenHearts(-p:GetGoldenHearts())
+			p:AddEternalHearts(-p:GetEternalHearts())
+			p:AddHearts(-p:GetHearts())
 		end
 	end
 end
@@ -410,7 +451,7 @@ mod:AddCallback(ModCallbacks.MC_PRE_PLAYER_COLLISION, mod.preIllusionWhiteFlame)
 
 function mod:postPickupInit(pickup)
 	local rng = pickup:GetDropRNG()
-	if pickup.SubType == HeartSubType.HEART_GOLDEN and player:GetSprite():GetAnimation() == "Appear" then
+	if pickup.SubType == HeartSubType.HEART_GOLDEN and pickup:GetSprite():GetAnimation() == "Appear" then
 		if rng:RandomFloat() >= 0.5 then
 			pickup:Morph(pickup.Type, pickup.Variant, HeartSubType.HEART_ILLUSION)
 		end
@@ -431,17 +472,24 @@ mod:AddCallback(ModCallbacks.MC_USE_ITEM, mod.onUseBookOfIllusions, CollectibleT
 function mod:onEntityTakeDamage(tookDamage, amount, flags, source, frames) 
 	local data = mod.GetEntityData(tookDamage)
 	if data.IsIllusion then
-			Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, tookDamage.Position, Vector.Zero, tookDamage)
+			--Isaac.Spawn(EntityType.ENTITY_EFFECT, EffectVariant.POOF01, -1, tookDamage.Position, Vector.Zero, tookDamage)
 			tookDamage:Kill() --doples always die in one hit, so the hud looks nicer. ideally i'd just get rid of the hud but that doesnt seem possible
+			local p = tookDamage:ToPlayer()
+			p:AddMaxHearts(-p:GetMaxHearts())
+			p:AddSoulHearts(-p:GetSoulHearts())
+			p:AddBoneHearts(-p:GetBoneHearts())
+			p:AddGoldenHearts(-p:GetGoldenHearts())
+			p:AddEternalHearts(-p:GetEternalHearts())
+			p:AddHearts(-p:GetHearts())
 	else
-		mod:RemovetEntityData(tookDamage)
+		mod:RemoveEntityData(tookDamage)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_ENTITY_TAKE_DMG, mod.onEntityTakeDamage, EntityType.ENTITY_PLAYER)
 
 function mod:AfterDeath(e)
 	if e.Type == EntityType.ENTITY_PLAYER then
-		mod:RemovetEntityData(e)
+		mod:RemoveEntityData(e)
 	end
 end
 mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, mod.AfterDeath)
@@ -462,17 +510,20 @@ mod:AddCallback(ModCallbacks.MC_POST_NPC_RENDER, mod.DarkEsau, EntityType.ENTITY
 
 function mod:ClonesControls(entity,hook,action)
 	if entity ~= nil and entity.Type == EntityType.ENTITY_PLAYER and not MCMIllusionsBombs then
-		local player = entity:ToPlayer()
-		local d = mod.GetEntityData(player)
+		local p = entity:ToPlayer()
+		local d = mod.GetEntityData(p)
 		if d.IsIllusion then
-			if action == ButtonAction.ACTION_BOMB or action == ButtonAction.ACTION_PILLCARD or
-			action == ButtonAction.ACTION_ITEM then
+			if (hook == InputHook.GET_ACTION_VALUE or hook == InputHook.IS_ACTION_PRESSED) and p:GetSprite():IsPlaying("Appear") then
+				return hook == InputHook.GET_ACTION_VALUE and 0 or false
+			end
+			if hook == InputHook.IS_ACTION_TRIGGERED and (action == ButtonAction.ACTION_BOMB or action == ButtonAction.ACTION_PILLCARD or
+			action == ButtonAction.ACTION_ITEM or p:GetSprite():IsPlaying("Appear")) then
 				return false
 			end
 		end
 	end
 end
-mod:AddCallback(ModCallbacks.MC_INPUT_ACTION, mod.ClonesControls, InputHook.IS_ACTION_TRIGGERED)
+mod:AddCallback(ModCallbacks.MC_INPUT_ACTION, mod.ClonesControls)
 
 function mod:GetMaxCollectibleID()
     return Isaac.GetItemConfig():GetCollectibles().Size -1
@@ -506,11 +557,12 @@ function mod.GetEntityData(entity,forgottenB)
 	return nil
 end
 
-function mod:RemovetEntityData(entity,forgottenB)
+function mod:RemoveEntityData(entity,forgottenB)
 	forgottenB = forgottenB or false
 	if entity then
 		if entity.Type == EntityType.ENTITY_PLAYER then
 			local player = entity:ToPlayer()
+			if not player then return end
 			if player:GetPlayerType() == PlayerType.PLAYER_THESOUL_B and forgottenB then
 				player = player:GetOtherTwin()
 			end
