@@ -87,10 +87,6 @@ if Encyclopedia then
 	})
 end
 
-if ExtraBirthright then
-    ExtraBirthright.AddBookToBirthrightEffect(CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS)
-end
-
 if ModConfigMenu then
 	local IHandBoI = "Illusions mod"
 	ModConfigMenu.UpdateCategory(IHandBoI, {
