@@ -12,6 +12,21 @@ illisionSprite:Play("IllusionHeart",true)]]
 HeartSubType.HEART_ILLUSION = 9000
 CollectibleType.COLLECTIBLE_BOOK_OF_ILLUSIONS = Isaac.GetItemIdByName("Book of Illusions")
 
+local TransformationItems = {
+	[PlayerForm.PLAYERFORM_DRUGS] = Isaac.GetItemIdByName("Spun transform"),
+	[PlayerForm.PLAYERFORM_MOM] = Isaac.GetItemIdByName("Mom transform"),
+	[PlayerForm.PLAYERFORM_GUPPY] = Isaac.GetItemIdByName("Guppy transform"),
+	[PlayerForm.PLAYERFORM_LORD_OF_THE_FLIES] = Isaac.GetItemIdByName("Fly transform"),
+	[PlayerForm.PLAYERFORM_BOB] = Isaac.GetItemIdByName("Bob transform"),
+	[PlayerForm.PLAYERFORM_MUSHROOM] = Isaac.GetItemIdByName("Mushroom transform"),
+	[PlayerForm.PLAYERFORM_BABY] = Isaac.GetItemIdByName("Baby transform"),
+	[PlayerForm.PLAYERFORM_ANGEL] = Isaac.GetItemIdByName("Angel transform"),
+	[PlayerForm.PLAYERFORM_EVIL_ANGEL] = Isaac.GetItemIdByName("Devil transform"),
+	[PlayerForm.PLAYERFORM_POOP] = Isaac.GetItemIdByName("Poop transform"),
+	[PlayerForm.PLAYERFORM_BOOK_WORM] = Isaac.GetItemIdByName("Book transform"),
+	[PlayerForm.PLAYERFORM_SPIDERBABY] = Isaac.GetItemIdByName("Spider transform"),
+}
+
 local PickupIllusionSFX = Isaac.GetSoundIdByName("PickupIllusion")
 
 local BOIDesc = "Spawns an illusion clone when used#Illusion clones are the same character as you and die in one hit"
@@ -344,6 +359,14 @@ function mod:addIllusion(player, isIllusion)
 			local c = _p:GetActiveItem(i)
 			if c > 0 then
 				_p:RemoveCollectible(c,false,i)
+			end
+		end
+
+		for transformation, transformationItem in pairs(TransformationItems) do
+			if player:HasPlayerForm(transformation) then
+				for _ = 1, 3, 1 do
+					_p:AddCollectible(transformationItem)
+				end
 			end
 		end
 		

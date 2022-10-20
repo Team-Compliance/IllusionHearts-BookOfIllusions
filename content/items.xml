@@ -1,3 +1,16 @@
 <items gfxroot="gfx/items/" version="1" deathanm2="gfx/death items.anm2">
 	<active id="0" gfx="BookOfIllusions.png" name="Book of Illusions" description="Army of you" maxcharges="12" quality="4" tags="book offensive" />
+
+	<passive name="Spun transform" description="Counts towards spun" hidden="true" tags="syringe"/>
+    <passive name="Mom transform" description="Counts towards mom" hidden="true" tags="mom"/>
+    <passive name="Guppy transform" description="Counts towards guppy" hidden="true" tags="guppy"/>
+    <passive name="Fly transform" description="Counts towards fly" hidden="true" tags="fly"/>
+    <passive name="Bob transform" description="Counts towards bob" hidden="true" tags="bob"/>
+    <passive name="Mushroom transform" description="Counts towards mushroom" hidden="true" tags="mushroom"/>
+    <passive name="Baby transform" description="Counts towards baby" hidden="true" tags="baby"/>
+    <passive name="Angel transform" description="Counts towards angel" hidden="true" tags="angel"/>
+    <passive name="Devil transform" description="Counts towards devil" hidden="true" tags="devil"/>
+    <passive name="Poop transform" description="Counts towards poop" hidden="true" tags="poop"/>
+    <passive name="Book transform" description="Counts towards book" hidden="true" tags="book"/>
+    <passive name="Spider transform" description="Counts towards spider" hidden="true" tags="spider"/>
 </items>
