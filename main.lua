@@ -2,7 +2,7 @@ IllusionMod = RegisterMod("Illusion Hearts + Book of Illusions", 1)
 local mod = IllusionMod
 local json = require("json")
 local sfxManager = SFXManager()
-local version = 2.4
+local version = 2.5
 local game = Game()
 local hud = game:GetHUD()
 --[[local illisionSprite = Sprite()
@@ -45,6 +45,7 @@ local ForbiddenItems = {
 }
 
 local MCMIllusionsBombs = false
+local MCMIllusionsSpawn = 20
 
 local ForbiddenPCombos = {
 	{PlayerType = PlayerType.PLAYER_THELOST_B, Item = CollectibleType.COLLECTIBLE_BIRTHRIGHT},
@@ -123,6 +124,24 @@ if ModConfigMenu then
 			end,
 			Info = "Option for clones to drop bombs."
 		})
+	ModConfigMenu.AddSetting(IHandBoI,
+		{
+			Type = ModConfigMenu.OptionType.NUMBER,
+			CurrentSetting = function()
+				return MCMIllusionsSpawn
+			end,
+			Default = 20,
+			Minimum = 0,
+			Maximum = 100,
+			Display = function()
+				return 'Chance to replace Golen Heart: '..MCMIllusionsSpawn..'%'
+			end,
+			OnChange = function(currentNum)
+				MCMIllusionsSpawn = currentNum
+			end,
+			Info = "Illusion heart's rarity."
+		})
+	
 end
 
 local function BlackList(collectible)
@@ -207,6 +226,7 @@ function mod:Save(isSaving)
 		save.Players = playersSave
 		save.Version = version
 		save.BombOption = MCMIllusionsBombs
+		save.SpawnOption = MCMIllusionsSpawn
 		mod:SaveData(json.encode(save))
 	end
 end
@@ -219,6 +239,9 @@ function mod:Load(isLoading)
 		load = json.decode(mod:LoadData())
 		if load.Version ~= nil and load.Version >= 2.3 then
 			MCMIllusionsBombs = load.BombOption
+		end
+		if load.Version ~= nil and load.Version >= 2.5 then
+			MCMIllusionsSpawn = load.SpawnOption
 		end
 	end
 	if isLoading then
@@ -435,7 +458,7 @@ function mod:preIllusionHeartPickup(pickup, collider, low)
 	if player then
 		local d = mod.GetEntityData(player)
 		if d.IsIllusion or player.Parent then
-			return pickup:IsShopItem()
+			return d.IsIllusion and true or pickup:IsShopItem()
 		else
 			d = nil
 		end
@@ -471,7 +494,7 @@ mod:AddCallback(ModCallbacks.MC_PRE_PLAYER_COLLISION, mod.preIllusionWhiteFlame)
 function mod:postPickupInit(pickup)
 	local rng = pickup:GetDropRNG()
 	if pickup.SubType == HeartSubType.HEART_GOLDEN and pickup:GetSprite():GetAnimation() == "Appear" then
-		if rng:RandomFloat() >= 0.5 then
+		if rng:RandomFloat() > (1 - MCMIllusionsSpawn * 0.01) then
 			pickup:Morph(pickup.Type, pickup.Variant, HeartSubType.HEART_ILLUSION)
 		end
 	end
